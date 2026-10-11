@@ -1,0 +1,6 @@
+{
+  "name": "VoxEmotion AI - Multilingual Expressive TTS Studio",
+  "description": "Next-generation multilingual AI text-to-speech studio featuring realistic emotional inflections, dual-speaker screenplays, vocal bursts, and cinematic voice direction.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
