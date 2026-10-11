@@ -504,71 +504,12 @@ export default function AudioWorkstationPlayer({
     setExportNotice(`Transcoding to ${format.toUpperCase()}...`);
 
     try {
-      const sanitizedTitle = (track.voice || 'vox')
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '-');
-      const sanitizedLang = (track.language || 'audio')
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '-');
-      const baseFilename = `voiceover-${sanitizedTitle}-${sanitizedLang}-${Date.now()}`;
-
-      if (format === 'wav') {
-        // Direct WAV export from base64
-        const byteCharacters = atob(track.audioBase64);
-        const byteNumbers = new Uint8Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const blob = new Blob([byteNumbers], { type: 'audio/wav' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${baseFilename}.wav`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        setExportNotice(`Exported ${baseFilename}.wav`);
-        setTimeout(() => setExportNotice(null), 3000);
-        return;
-      }
-
-      // Call conversion API for MP3, AAC, FLAC, OGG
-      const res = await fetch('/api/tts/convert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          audioBase64: track.audioBase64,
-          format,
-          bitrate: selectedBitrate,
-          filename: baseFilename,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || `Failed to convert audio to ${format.toUpperCase()}`);
-      }
-
-      // Download the converted base64
-      const byteCharacters = atob(data.audioBase64);
-      const byteNumbers = new Uint8Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const blob = new Blob([byteNumbers], {
-        type: data.mimeType || `audio/${format}`,
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = data.filename || `${baseFilename}.${format}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      setExportNotice(`Exported ${data.filename || `${baseFilename}.${format}`}`);
+      const filename = await triggerAudioDownload(
+        track,
+        format,
+        selectedBitrate
+      );
+      setExportNotice(`Exported ${filename}`);
       setTimeout(() => setExportNotice(null), 3000);
     } catch (err: any) {
       console.error('Export error:', err);
@@ -917,7 +858,7 @@ export default function AudioWorkstationPlayer({
                       </span>
                       <span>MPEG Audio (.mp3)</span>
                     </div>
-                    <span className="text-[10px] text-slate-400">Universal</span>
+                    <span className="text-[10px] text-emerald-400 font-medium">Instant • Fast</span>
                   </button>
 
                   <button

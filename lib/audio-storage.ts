@@ -263,9 +263,110 @@ export function saveAutoDownloadConfig(config: AutoDownloadConfig): void {
   }
 }
 
+function parseWavHeader(dataView: DataView) {
+  if (
+    dataView.byteLength < 44 ||
+    dataView.getUint32(0, false) !== 0x52494646 ||
+    dataView.getUint32(8, false) !== 0x57415645
+  ) {
+    return { channels: 1, sampleRate: 24000, dataOffset: 0, dataLen: dataView.byteLength };
+  }
+
+  let offset = 12;
+  let channels = 1;
+  let sampleRate = 24000;
+  let dataOffset = 44;
+  let dataLen = dataView.byteLength - 44;
+
+  while (offset + 8 <= dataView.byteLength) {
+    const chunkId = dataView.getUint32(offset, false);
+    const chunkSize = dataView.getUint32(offset + 4, true);
+
+    if (chunkId === 0x666d7420) {
+      channels = dataView.getUint16(offset + 10, true);
+      sampleRate = dataView.getUint32(offset + 12, true);
+    } else if (chunkId === 0x64617461) {
+      dataOffset = offset + 8;
+      dataLen = Math.min(chunkSize, dataView.byteLength - dataOffset);
+      break;
+    }
+    offset += 8 + chunkSize;
+  }
+
+  return { channels, sampleRate, dataOffset, dataLen };
+}
+
+/**
+ * Super-fast client-side MP3 transcoding in browser memory using LAME.
+ * Avoids server network round-trips or cold-starts, converting audio in milliseconds.
+ */
+export async function transcodeWavToMp3Client(
+  audioBase64: string,
+  bitrate: '128k' | '192k' | '256k' | '320k' = '192k'
+): Promise<Blob | null> {
+  try {
+    const { Mp3Encoder } = await import('@breezystack/lamejs');
+    const byteCharacters = atob(audioBase64);
+    const bytes = new Uint8Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      bytes[i] = byteCharacters.charCodeAt(i);
+    }
+
+    const dataView = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const { channels, sampleRate, dataOffset, dataLen } = parseWavHeader(dataView);
+
+    const sampleCount = Math.floor(dataLen / 2);
+    if (sampleCount <= 0) return null;
+    const samples = new Int16Array(bytes.buffer, bytes.byteOffset + dataOffset, sampleCount);
+
+    const kbps = parseInt(bitrate.replace('k', ''), 10) || 192;
+    const encoder = new Mp3Encoder(channels, sampleRate, kbps);
+    const mp3Chunks: Uint8Array[] = [];
+    const BLOCK_SIZE = 1152;
+
+    if (channels === 1) {
+      for (let i = 0; i < samples.length; i += BLOCK_SIZE) {
+        const chunk = samples.subarray(i, i + BLOCK_SIZE);
+        const mp3buf = encoder.encodeBuffer(chunk);
+        if (mp3buf && mp3buf.length > 0) {
+          mp3Chunks.push(new Uint8Array(mp3buf));
+        }
+      }
+    } else {
+      const half = Math.floor(samples.length / 2);
+      const left = new Int16Array(half);
+      const right = new Int16Array(half);
+      for (let i = 0, j = 0; i < samples.length - 1; i += 2, j++) {
+        left[j] = samples[i];
+        right[j] = samples[i + 1];
+      }
+      for (let i = 0; i < half; i += BLOCK_SIZE) {
+        const leftChunk = left.subarray(i, i + BLOCK_SIZE);
+        const rightChunk = right.subarray(i, i + BLOCK_SIZE);
+        const mp3buf = encoder.encodeBuffer(leftChunk, rightChunk);
+        if (mp3buf && mp3buf.length > 0) {
+          mp3Chunks.push(new Uint8Array(mp3buf));
+        }
+      }
+    }
+
+    const flushed = encoder.flush();
+    if (flushed && flushed.length > 0) {
+      mp3Chunks.push(new Uint8Array(flushed));
+    }
+
+    if (mp3Chunks.length === 0) return null;
+    return new Blob(mp3Chunks as BlobPart[], { type: 'audio/mpeg' });
+  } catch (err) {
+    console.warn('Client-side MP3 transcoding fallback to server:', err);
+    return null;
+  }
+}
+
 /**
  * Triggers an immediate browser file download for a synthesized voice track.
- * Supports zero-latency client-side WAV blob conversion or backend transcoding (MP3, AAC, FLAC, OGG).
+ * Supports zero-latency client-side WAV blob conversion or instant client-side MP3 transcoding,
+ * with fast server-side fallback and multi-format support (MP3, AAC, FLAC, OGG).
  */
 export async function triggerAudioDownload(
   track: {
@@ -309,7 +410,27 @@ export async function triggerAudioDownload(
     return `${baseFilename}.wav`;
   }
 
-  // Transcoding via backend ffmpeg
+  // Super-Fast In-Browser MP3 Transcoding (Zero Network Overhead)
+  if (format === 'mp3') {
+    try {
+      const mp3Blob = await transcodeWavToMp3Client(track.audioBase64, bitrate);
+      if (mp3Blob && mp3Blob.size > 0) {
+        const url = URL.createObjectURL(mp3Blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${baseFilename}.mp3`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        return `${baseFilename}.mp3`;
+      }
+    } catch (clientErr) {
+      console.warn('Client MP3 transcode failed, falling back to fast server transcode:', clientErr);
+    }
+  }
+
+  // Fast Backend Server Transcoding (AAC, FLAC, OGG, or fallback MP3)
   const res = await fetch('/api/tts/convert', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

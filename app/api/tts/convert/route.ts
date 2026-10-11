@@ -8,13 +8,13 @@ const FORMAT_CONFIG: Record<
   mp3: {
     args: (b) => [
       '-threads',
-      '2',
+      '0',
       '-c:a',
       'libmp3lame',
       '-b:a',
       b,
       '-compression_level',
-      '2',
+      '7',
       '-f',
       'mp3',
     ],
@@ -22,17 +22,17 @@ const FORMAT_CONFIG: Record<
     ext: 'mp3',
   },
   aac: {
-    args: (b) => ['-threads', '2', '-c:a', 'aac', '-b:a', b, '-f', 'adts'],
+    args: (b) => ['-threads', '0', '-c:a', 'aac', '-b:a', b, '-f', 'adts'],
     mimeType: 'audio/aac',
     ext: 'aac',
   },
   flac: {
-    args: () => ['-threads', '2', '-c:a', 'flac', '-compression_level', '3', '-f', 'flac'],
+    args: () => ['-threads', '0', '-c:a', 'flac', '-compression_level', '1', '-f', 'flac'],
     mimeType: 'audio/flac',
     ext: 'flac',
   },
   ogg: {
-    args: (b) => ['-threads', '2', '-c:a', 'libvorbis', '-b:a', b, '-f', 'ogg'],
+    args: (b) => ['-threads', '0', '-c:a', 'libvorbis', '-b:a', b, '-f', 'ogg'],
     mimeType: 'audio/ogg',
     ext: 'ogg',
   },
