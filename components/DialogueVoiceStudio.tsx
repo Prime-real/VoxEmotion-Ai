@@ -22,8 +22,14 @@ import {
   Info,
   Play,
   Square,
+  Download,
 } from 'lucide-react';
-import { dbGetCachedAudition, dbSaveCachedAudition, AutoDownloadConfig } from '@/lib/audio-storage';
+import {
+  dbGetCachedAudition,
+  dbSaveCachedAudition,
+  AutoDownloadConfig,
+  triggerAudioDownload,
+} from '@/lib/audio-storage';
 
 interface DialogueLine {
   id: string;
@@ -104,6 +110,8 @@ export default function DialogueVoiceStudio({
   const [selectedGenre, setSelectedGenre] = useState('Tech Podcast Banter');
   const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const [lastGeneratedTrack, setLastGeneratedTrack] = useState<AudioTrackMetadata | null>(null);
+  const [isDownloadingVoiceover, setIsDownloadingVoiceover] = useState(false);
   const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
 
   // Stop audition audio on unmount
@@ -333,7 +341,7 @@ export default function DialogueVoiceStudio({
         throw new Error(data.error || 'Failed to synthesize dialogue.');
       }
 
-      onAudioGenerated({
+      const newTrack: AudioTrackMetadata = {
         audioBase64: data.audioBase64,
         mimeType: data.mimeType || 'audio/wav',
         voice: `${speaker1.name} (${speaker1.voice.name}) & ${speaker2.name} (${speaker2.voice.name})`,
@@ -342,12 +350,33 @@ export default function DialogueVoiceStudio({
         model: 'gemini-3.8-flash-tts',
         textSnippet: `${lines[0]?.speaker}: "${lines[0]?.text}" ... [${lines.length} lines]`,
         timestamp: Date.now(),
-      });
+      };
+
+      setLastGeneratedTrack(newTrack);
+      onAudioGenerated(newTrack);
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'Error generating dialogue audio.');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Download Dialogue Voiceover Handler
+  const handleDownloadVoiceover = async () => {
+    if (!lastGeneratedTrack) return;
+    setIsDownloadingVoiceover(true);
+    try {
+      await triggerAudioDownload(
+        lastGeneratedTrack,
+        autoDownloadConfig?.format || 'wav',
+        autoDownloadConfig?.bitrate || '192k'
+      );
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || 'Failed to download voiceover.');
+    } finally {
+      setIsDownloadingVoiceover(false);
     }
   };
 
@@ -787,23 +816,45 @@ export default function DialogueVoiceStudio({
             <div />
           )}
 
-          <button
-            onClick={handleSynthesizeDialogue}
-            disabled={isGenerating}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-3 font-semibold text-white shadow-xl shadow-indigo-600/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all cursor-pointer"
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span>Synthesizing Screenplay Audio...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-5 w-5" />
-                <span>Synthesize Dual-Speaker Dialogue</span>
-              </>
+          <div className="flex items-center gap-3">
+            {lastGeneratedTrack && (
+              <button
+                type="button"
+                onClick={handleDownloadVoiceover}
+                disabled={isDownloadingVoiceover}
+                title={`Download Voiceover file (${(autoDownloadConfig?.format || 'wav').toUpperCase()})`}
+                className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-950/70 hover:bg-emerald-900/80 px-4 py-3 font-semibold text-emerald-300 shadow-md shadow-emerald-950/50 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+              >
+                {isDownloadingVoiceover ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+                ) : (
+                  <Download className="h-4 w-4 text-emerald-400" />
+                )}
+                <span>Download Voiceover</span>
+                <span className="rounded bg-emerald-900/90 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-mono text-emerald-200 uppercase font-bold">
+                  {autoDownloadConfig?.format || 'wav'}
+                </span>
+              </button>
             )}
-          </button>
+
+            <button
+              onClick={handleSynthesizeDialogue}
+              disabled={isGenerating}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-3 font-semibold text-white shadow-xl shadow-indigo-600/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 transition-all cursor-pointer"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Synthesizing Screenplay Audio...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-5 w-5" />
+                  <span>Synthesize Dual-Speaker Dialogue</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

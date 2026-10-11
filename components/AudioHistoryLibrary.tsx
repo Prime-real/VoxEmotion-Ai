@@ -170,7 +170,7 @@ export default function AudioHistoryLibrary({
             ) : (
               <Download className="h-3 w-3" />
             )}
-            <span>Bulk Export ({filteredTracks.length})</span>
+            <span>Download All Voiceovers ({filteredTracks.length})</span>
           </button>
 
           {/* Auto-download status badge */}
@@ -264,10 +264,11 @@ export default function AudioHistoryLibrary({
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => handleDownloadTrack(item)}
-                  title="Download WAV"
-                  className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Download Voiceover file"
+                  className="flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-800/90 hover:bg-emerald-600 hover:border-emerald-500 px-2.5 py-1 text-xs font-medium text-slate-200 hover:text-white transition-all cursor-pointer shadow-sm"
                 >
-                  <Download className="h-3.5 w-3.5" />
+                  <Download className="h-3.5 w-3.5 text-emerald-400 group-hover:text-white" />
+                  <span className="hidden sm:inline">Download Voiceover</span>
                 </button>
                 <button
                   onClick={() => onDeleteTrack(item.timestamp)}

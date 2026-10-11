@@ -510,7 +510,7 @@ export default function AudioWorkstationPlayer({
       const sanitizedLang = (track.language || 'audio')
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '-');
-      const baseFilename = `voxemotion-${sanitizedTitle}-${sanitizedLang}-${Date.now()}`;
+      const baseFilename = `voiceover-${sanitizedTitle}-${sanitizedLang}-${Date.now()}`;
 
       if (format === 'wav') {
         // Direct WAV export from base64
@@ -867,29 +867,32 @@ export default function AudioWorkstationPlayer({
             </span>
           </button>
 
-          {/* Export Multi-Format Dropdown Button */}
+          {/* Voiceover Download Multi-Format Dropdown Button */}
           <div className="relative">
             <div className="flex items-center rounded-lg shadow-md shadow-indigo-600/30 overflow-hidden">
-              {/* Primary Download Button for selected format */}
+              {/* Primary Download Voiceover Button */}
               <button
                 onClick={() => handleExportFormat(selectedFormat)}
                 disabled={!track || isExporting}
-                title={`Export as ${selectedFormat.toUpperCase()}`}
-                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 transition-all cursor-pointer"
+                title={`Download Voiceover as ${selectedFormat.toUpperCase()}`}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 transition-all cursor-pointer"
               >
                 {isExporting ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <Download className="h-3.5 w-3.5" />
                 )}
-                <span>Export {selectedFormat.toUpperCase()}</span>
+                <span>Download Voiceover</span>
+                <span className="rounded bg-indigo-950/70 border border-indigo-400/30 px-1.5 py-0.2 text-[10px] font-mono text-indigo-200 uppercase font-bold">
+                  {selectedFormat}
+                </span>
               </button>
 
               {/* Dropdown toggle arrow */}
               <button
                 onClick={() => setShowExportMenu(!showExportMenu)}
                 disabled={!track}
-                title="Choose file format (MP3, AAC, WAV, FLAC, OGG)"
+                title="Choose voiceover format (MP3, AAC, WAV, FLAC, OGG) & settings"
                 className="bg-indigo-700 hover:bg-indigo-600 px-2 py-1.5 text-white disabled:opacity-40 border-l border-indigo-500/30 transition-colors cursor-pointer"
               >
                 <ChevronDown className="h-3.5 w-3.5" />
@@ -900,7 +903,7 @@ export default function AudioWorkstationPlayer({
             {showExportMenu && (
               <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-700 bg-slate-900/95 p-2.5 shadow-2xl backdrop-blur-2xl z-50">
                 <div className="px-2 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800">
-                  Select Export Format
+                  Voiceover Download Format
                 </div>
 
                 <div className="py-1 space-y-1">
@@ -1165,6 +1168,21 @@ export default function AudioWorkstationPlayer({
             </button>
           ))}
         </div>
+
+        {/* Quick Voiceover Download Button */}
+        <button
+          onClick={() => handleExportFormat(selectedFormat)}
+          disabled={!audioUrl || isExporting}
+          title={`Download Voiceover file (${selectedFormat.toUpperCase()})`}
+          className="flex items-center gap-1.5 rounded-lg border border-indigo-500/30 bg-slate-900/90 hover:bg-indigo-600 hover:border-indigo-400 px-2.5 py-1 text-xs font-medium text-slate-200 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer shadow-sm"
+        >
+          {isExporting ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-indigo-400" />
+          ) : (
+            <Download className="h-3.5 w-3.5 text-indigo-400" />
+          )}
+          <span>Download Voiceover</span>
+        </button>
 
         {/* Volume */}
         <div className="flex items-center gap-2">

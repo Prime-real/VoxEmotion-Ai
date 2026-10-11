@@ -288,7 +288,7 @@ export async function triggerAudioDownload(
   const sanitizedLang = (track.language || 'audio')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '-');
-  const baseFilename = `voxemotion-${sanitizedTitle}-${sanitizedLang}-${track.timestamp || Date.now()}`;
+  const baseFilename = `voiceover-${sanitizedTitle}-${sanitizedLang}-${track.timestamp || Date.now()}`;
 
   // Instant 0ms Client-Side WAV Blob Download
   if (format === 'wav') {

@@ -26,10 +26,11 @@ import {
   Mic,
   Smile,
   Flame,
+  Download,
 } from 'lucide-react';
 
 import VoiceSelectorCards from './VoiceSelectorCards';
-import { AutoDownloadConfig } from '@/lib/audio-storage';
+import { AutoDownloadConfig, triggerAudioDownload } from '@/lib/audio-storage';
 
 interface SoloVoiceStudioProps {
   onAudioGenerated: (track: AudioTrackMetadata) => void;
@@ -74,6 +75,8 @@ export default function SoloVoiceStudio({
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [lastGeneratedTrack, setLastGeneratedTrack] = useState<AudioTrackMetadata | null>(null);
+  const [isDownloadingVoiceover, setIsDownloadingVoiceover] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -235,7 +238,7 @@ export default function SoloVoiceStudio({
         throw new Error(data.error || 'Failed to synthesize speech.');
       }
 
-      onAudioGenerated({
+      const newTrack: AudioTrackMetadata = {
         audioBase64: data.audioBase64,
         mimeType: data.mimeType || 'audio/wav',
         voice: selectedVoice.name,
@@ -244,12 +247,33 @@ export default function SoloVoiceStudio({
         model: modelChoice,
         textSnippet: text,
         timestamp: Date.now(),
-      });
+      };
+
+      setLastGeneratedTrack(newTrack);
+      onAudioGenerated(newTrack);
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || 'An error occurred during audio generation.');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  // Download Voiceover Handler
+  const handleDownloadVoiceover = async () => {
+    if (!lastGeneratedTrack) return;
+    setIsDownloadingVoiceover(true);
+    try {
+      await triggerAudioDownload(
+        lastGeneratedTrack,
+        autoDownloadConfig?.format || 'wav',
+        autoDownloadConfig?.bitrate || '192k'
+      );
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || 'Failed to download voiceover.');
+    } finally {
+      setIsDownloadingVoiceover(false);
     }
   };
 
@@ -567,23 +591,45 @@ export default function SoloVoiceStudio({
             <div />
           )}
 
-          <button
-            onClick={handleSynthesize}
-            disabled={isGenerating || !text.trim()}
-            className="relative flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 px-6 py-3 font-semibold text-white shadow-xl shadow-indigo-600/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none transition-all cursor-pointer"
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span>Synthesizing Expressive Speech...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-5 w-5" />
-                <span>Synthesize Speech</span>
-              </>
+          <div className="flex items-center gap-3">
+            {lastGeneratedTrack && (
+              <button
+                type="button"
+                onClick={handleDownloadVoiceover}
+                disabled={isDownloadingVoiceover}
+                title={`Download Voiceover file (${(autoDownloadConfig?.format || 'wav').toUpperCase()})`}
+                className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-950/70 hover:bg-emerald-900/80 px-4 py-3 font-semibold text-emerald-300 shadow-md shadow-emerald-950/50 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+              >
+                {isDownloadingVoiceover ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+                ) : (
+                  <Download className="h-4 w-4 text-emerald-400" />
+                )}
+                <span>Download Voiceover</span>
+                <span className="rounded bg-emerald-900/90 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-mono text-emerald-200 uppercase font-bold">
+                  {autoDownloadConfig?.format || 'wav'}
+                </span>
+              </button>
             )}
-          </button>
+
+            <button
+              onClick={handleSynthesize}
+              disabled={isGenerating || !text.trim()}
+              className="relative flex items-center gap-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 px-6 py-3 font-semibold text-white shadow-xl shadow-indigo-600/30 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none transition-all cursor-pointer"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Synthesizing Expressive Speech...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-5 w-5" />
+                  <span>Synthesize Speech</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>
