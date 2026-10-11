@@ -28,7 +28,9 @@ import {
   Smile,
   FileAudio,
   Sliders,
+  Square,
 } from 'lucide-react';
+import { dbGetCachedAudition, dbSaveCachedAudition } from '@/lib/audio-storage';
 import {
   VOICES,
   LANGUAGES,
@@ -70,6 +72,8 @@ export default function AudioWorkstationPlayer({
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const freqDataRef = useRef<Uint8Array | null>(null);
+  const gradientRef = useRef<CanvasGradient | null>(null);
 
   // Playback State
   const [isPlaying, setIsPlaying] = useState(false);
@@ -80,6 +84,7 @@ export default function AudioWorkstationPlayer({
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [vuMeter, setVuMeter] = useState({ left: 0, right: 0 });
 
   // Export State
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('mp3');
@@ -104,6 +109,19 @@ export default function AudioWorkstationPlayer({
   );
   const [isSynthesizingPrompt, setIsSynthesizingPrompt] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
+  const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
+  const [isLoadingVoicePreview, setIsLoadingVoicePreview] = useState(false);
+  const previewVoiceAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Stop audition audio on unmount
+  useEffect(() => {
+    return () => {
+      if (previewVoiceAudioRef.current) {
+        previewVoiceAudioRef.current.pause();
+        previewVoiceAudioRef.current = null;
+      }
+    };
+  }, []);
 
   // Sync state during render when a new track is passed in
   if (track?.timestamp !== prevTrackTimestamp) {
@@ -177,13 +195,23 @@ export default function AudioWorkstationPlayer({
     }
   }, []);
 
-  // Visualizer render loop
+  // Visualizer render loop with pre-allocated buffer
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Cache gradient
+    if (!gradientRef.current) {
+      const grad = ctx.createLinearGradient(0, canvas.height, 0, 0);
+      grad.addColorStop(0, '#6366f1');
+      grad.addColorStop(0.5, '#a855f7');
+      grad.addColorStop(1, '#06b6d4');
+      gradientRef.current = grad;
+    }
+
+    let frameCount = 0;
     const render = () => {
       animationFrameRef.current = requestAnimationFrame(render);
       const width = canvas.width;
@@ -203,8 +231,27 @@ export default function AudioWorkstationPlayer({
 
       if (analyserRef.current && isPlaying) {
         const bufferLength = analyserRef.current.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-        analyserRef.current.getByteFrequencyData(dataArray);
+        if (!freqDataRef.current || freqDataRef.current.length !== bufferLength) {
+          freqDataRef.current = new Uint8Array(bufferLength);
+        }
+        const dataArray = freqDataRef.current;
+        (analyserRef.current as AnalyserNode).getByteFrequencyData(dataArray as unknown as Uint8Array<ArrayBuffer>);
+
+        // Calculate peak level for visual VU meter every 3 frames
+        frameCount++;
+        if (frameCount % 3 === 0) {
+          let leftSum = 0;
+          let rightSum = 0;
+          const half = Math.floor(bufferLength / 2);
+          for (let i = 0; i < half; i++) leftSum += dataArray[i];
+          for (let i = half; i < bufferLength; i++) rightSum += dataArray[i];
+          const lAvg = leftSum / half / 255;
+          const rAvg = rightSum / (bufferLength - half) / 255;
+          setVuMeter({
+            left: Math.min(100, Math.round(lAvg * 130)),
+            right: Math.min(100, Math.round(rAvg * 130)),
+          });
+        }
 
         const barCount = 38;
         const barWidth = width / barCount - 3;
@@ -215,12 +262,7 @@ export default function AudioWorkstationPlayer({
           const val = dataArray[dataIndex] || 0;
           const barHeight = Math.max(4, (val / 255) * (height - 12));
 
-          const gradient = ctx.createLinearGradient(0, height, 0, 0);
-          gradient.addColorStop(0, '#6366f1');
-          gradient.addColorStop(0.5, '#a855f7');
-          gradient.addColorStop(1, '#06b6d4');
-
-          ctx.fillStyle = gradient;
+          ctx.fillStyle = gradientRef.current || '#6366f1';
           const yPos = height - barHeight;
 
           ctx.beginPath();
@@ -273,7 +315,7 @@ export default function AudioWorkstationPlayer({
     };
   }, [isPlaying, currentTime, duration]);
 
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     if (!audioRef.current || !audioUrl) return;
 
     setupAudioContext();
@@ -287,7 +329,67 @@ export default function AudioWorkstationPlayer({
     } else {
       audioRef.current.play().then(() => setIsPlaying(true));
     }
-  };
+  }, [audioUrl, isPlaying, setupAudioContext]);
+
+  const toggleMute = useCallback(() => {
+    if (!audioRef.current) return;
+    if (isMuted) {
+      audioRef.current.muted = false;
+      setIsMuted(false);
+    } else {
+      audioRef.current.muted = true;
+      setIsMuted(true);
+    }
+  }, [isMuted]);
+
+  // Pro Audio Workstation Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.code === 'Space' || e.key === 'k') {
+        e.preventDefault();
+        togglePlay();
+      } else if (e.code === 'ArrowLeft' || e.key === 'j') {
+        e.preventDefault();
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.max(
+            0,
+            audioRef.current.currentTime - 3
+          );
+          setCurrentTime(audioRef.current.currentTime);
+        }
+      } else if (e.code === 'ArrowRight' || e.key === 'l') {
+        e.preventDefault();
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.min(
+            duration,
+            audioRef.current.currentTime + 3
+          );
+          setCurrentTime(audioRef.current.currentTime);
+        }
+      } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        toggleMute();
+      } else if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault();
+        if (audioRef.current) {
+          audioRef.current.currentTime = 0;
+          setCurrentTime(0);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying, duration, audioUrl, togglePlay, toggleMute]);
 
   const handleTimeUpdate = () => {
     if (audioRef.current) {
@@ -331,16 +433,6 @@ export default function AudioWorkstationPlayer({
     }
   };
 
-  const toggleMute = () => {
-    if (!audioRef.current) return;
-    if (isMuted) {
-      audioRef.current.muted = false;
-      setIsMuted(false);
-    } else {
-      audioRef.current.muted = true;
-      setIsMuted(true);
-    }
-  };
 
   const toggleLoop = () => {
     const next = !isLooping;
@@ -471,6 +563,89 @@ export default function AudioWorkstationPlayer({
       const nextPos = start + tag.length + 2;
       textarea.setSelectionRange(nextPos, nextPos);
     }, 10);
+  };
+
+  // Audition voice from prompt box
+  const handleToggleVoiceAudition = async (voiceName: string) => {
+    const allVoices = [...customClonedVoices, ...VOICES];
+    const voice =
+      allVoices.find((v) => v.id === voiceName || v.name === voiceName) ||
+      VOICES[0];
+
+    if (previewingVoiceId === voice.id) {
+      if (previewVoiceAudioRef.current) {
+        previewVoiceAudioRef.current.pause();
+        previewVoiceAudioRef.current = null;
+      }
+      setPreviewingVoiceId(null);
+      setIsLoadingVoicePreview(false);
+      return;
+    }
+
+    if (previewVoiceAudioRef.current) {
+      previewVoiceAudioRef.current.pause();
+      previewVoiceAudioRef.current = null;
+    }
+
+    setPreviewingVoiceId(voice.id);
+    setIsLoadingVoicePreview(true);
+
+    const cacheKey = `${voice.id}_${voice.auditionQuote}`;
+
+    try {
+      const cachedBase64 = await dbGetCachedAudition(cacheKey);
+      let audioBase64 = cachedBase64;
+      let mimeType = 'audio/wav';
+
+      if (!audioBase64) {
+        const res = await fetch('/api/tts/preview-voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            voiceId: voice.id,
+            baseVoice: voice.baseVoice || voice.id,
+            style: voice.sampleEmotion,
+            personaPrompt: voice.personaPrompt || '',
+            auditionQuote: voice.auditionQuote,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to load voice audition.');
+        }
+
+        audioBase64 = data.audioBase64;
+        mimeType = data.mimeType || 'audio/wav';
+
+        if (audioBase64) {
+          dbSaveCachedAudition(cacheKey, audioBase64);
+        }
+      }
+
+      if (!audioBase64) {
+        throw new Error('No audio returned for audition');
+      }
+
+      const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
+      previewVoiceAudioRef.current = audio;
+
+      audio.onended = () => {
+        setPreviewingVoiceId(null);
+        setIsLoadingVoicePreview(false);
+      };
+      audio.onerror = () => {
+        setPreviewingVoiceId(null);
+        setIsLoadingVoicePreview(false);
+      };
+
+      await audio.play();
+      setIsLoadingVoicePreview(false);
+    } catch (err) {
+      console.error(err);
+      setPreviewingVoiceId(null);
+      setIsLoadingVoicePreview(false);
+    }
   };
 
   // Synthesize from workstation prompt box
@@ -763,6 +938,24 @@ export default function AudioWorkstationPlayer({
           <span>{isPlaying ? 'Master Playback' : 'Workstation'}</span>
         </div>
 
+        {/* Real-time Stereo Peak VU Meters */}
+        <div className="absolute top-3 right-32 hidden sm:flex items-center gap-2 text-[10px] font-mono text-slate-400">
+          <span className="text-slate-500">L</span>
+          <div className="h-2 w-16 bg-slate-900 rounded overflow-hidden border border-slate-800 flex">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 transition-all duration-75"
+              style={{ width: `${vuMeter.left}%` }}
+            />
+          </div>
+          <span className="text-slate-500">R</span>
+          <div className="h-2 w-16 bg-slate-900 rounded overflow-hidden border border-slate-800 flex">
+            <div
+              className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 transition-all duration-75"
+              style={{ width: `${vuMeter.right}%` }}
+            />
+          </div>
+        </div>
+
         <div className="absolute top-3 right-4 text-[11px] font-mono text-slate-400">
           {formatTime(currentTime)} / {formatTime(duration)}
         </div>
@@ -870,6 +1063,20 @@ export default function AudioWorkstationPlayer({
         </div>
       </div>
 
+      {/* Pro Studio Keyboard Shortcuts Strip */}
+      <div className="hidden md:flex items-center justify-between text-[10px] text-slate-500 font-mono bg-slate-950/40 rounded-lg px-2.5 py-1 border border-slate-800/40">
+        <div className="flex items-center gap-3">
+          <span className="text-slate-400">Pro Shortcuts:</span>
+          <span><kbd className="rounded bg-slate-800 px-1 py-0.5 text-slate-300 border border-slate-700">Space</kbd> Play/Pause</span>
+          <span><kbd className="rounded bg-slate-800 px-1 py-0.5 text-slate-300 border border-slate-700">←</kbd> <kbd className="rounded bg-slate-800 px-1 py-0.5 text-slate-300 border border-slate-700">→</kbd> Seek ±3s</span>
+          <span><kbd className="rounded bg-slate-800 px-1 py-0.5 text-slate-300 border border-slate-700">M</kbd> Mute</span>
+          <span><kbd className="rounded bg-slate-800 px-1 py-0.5 text-slate-300 border border-slate-700">R</kbd> Reset</span>
+        </div>
+        <div>
+          <span><kbd className="rounded bg-slate-800 px-1 py-0.5 text-slate-300 border border-slate-700">⌘+Enter</kbd> Quick Synthesize</span>
+        </div>
+      </div>
+
       {/* PROMPT BOX: ENTER & EDIT SCRIPT DIRECTLY */}
       <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-all">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
@@ -900,13 +1107,19 @@ export default function AudioWorkstationPlayer({
           </div>
         </div>
 
-        {/* Textarea for Script Prompt */}
+        {/* Textarea for Script Prompt with Ctrl+Enter shortcut */}
         <textarea
           ref={textareaRef}
           rows={3}
           value={promptScript}
           onChange={(e) => setPromptScript(e.target.value)}
-          placeholder="Enter prompt script to synthesize speech. Insert vocal bursts like <breath>, <gasp>, or <laugh> for realistic human expression..."
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+              e.preventDefault();
+              handleSynthesizeFromPrompt();
+            }
+          }}
+          placeholder="Enter prompt script to synthesize speech. Insert vocal bursts like <breath>, <gasp>, or <laugh> for realistic human expression... (Press ⌘+Enter to Synthesize)"
           className="w-full rounded-lg border border-slate-800 bg-slate-900/90 p-3 text-xs text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed font-sans"
         />
 
@@ -940,6 +1153,34 @@ export default function AudioWorkstationPlayer({
                 </optgroup>
               </select>
             </div>
+
+            {/* Quick Audition Voice Button */}
+            <button
+              type="button"
+              onClick={() => handleToggleVoiceAudition(promptVoice)}
+              className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition-all cursor-pointer ${
+                previewingVoiceId
+                  ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/40'
+                  : 'bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
+              }`}
+              title="Audition selected character voice"
+            >
+              {previewingVoiceId ? (
+                isLoadingVoicePreview ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <>
+                    <Square className="h-2.5 w-2.5 fill-current" />
+                    <span>Stop</span>
+                  </>
+                )
+              ) : (
+                <>
+                  <Play className="h-2.5 w-2.5 fill-current ml-0.5" />
+                  <span>Audition Voice</span>
+                </>
+              )}
+            </button>
 
             {/* Language select */}
             <div className="flex items-center gap-1 bg-slate-900 rounded-lg px-2 py-1 border border-slate-800">

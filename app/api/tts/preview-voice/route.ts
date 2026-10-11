@@ -21,9 +21,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const cacheKey = `${voiceId || baseVoice}_${style}_${personaPrompt}`.slice(
+    const cacheKey = `${voiceId || baseVoice}_${auditionQuote || ''}_${style || ''}_${personaPrompt || ''}`.slice(
       0,
-      120
+      180
     );
     if (previewCache.has(cacheKey)) {
       return NextResponse.json({

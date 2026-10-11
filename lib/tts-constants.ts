@@ -247,6 +247,126 @@ export const VOICES: VoiceOption[] = [
     personaPrompt:
       'Animated children’s book narrator, high pitch dynamics, bubbly enthusiasm and warm storytelling',
   },
+  {
+    id: 'Valeria',
+    name: 'Valeria',
+    baseVoice: 'Kore',
+    gender: 'Female',
+    category: 'Cinematic & Sci-Fi',
+    tone: 'Cyberpunk fixer & info-broker, razor-sharp irony',
+    bestFor: 'Sci-fi thrillers, neo-noir intrigue, sharp tech commercials',
+    avatarColor: 'from-cyan-500 to-emerald-600',
+    sampleEmotion: 'Cynical, sharp, and razor-witted',
+    auditionQuote:
+      'Information is currency in this town, darling. <sigh> And right now, your account is looking pretty thin.',
+    personaPrompt:
+      'Streetwise cyberpunk info broker, crisp cadence, slight vocal fry and knowing, sardonic undertones',
+  },
+  {
+    id: 'Vance',
+    name: 'Commander Vance',
+    baseVoice: 'Fenrir',
+    gender: 'Male',
+    category: 'Cinematic & Sci-Fi',
+    tone: 'Deep-space fleet commander, battle-hardened gravitas',
+    bestFor: 'Military sci-fi, epic cinematic trailers, command briefings',
+    avatarColor: 'from-slate-600 to-blue-900',
+    sampleEmotion: 'Commanding, stoic, and resolute',
+    auditionQuote:
+      'All ships, hold formation! <breath> Shield generators to maximum. We do not yield this sector today.',
+    personaPrompt:
+      'Steely battle-hardened starfleet admiral, deep gravelly resonance, unwavering military authority and measured pauses',
+  },
+  {
+    id: 'Aoi',
+    name: 'Kitsune Aoi',
+    baseVoice: 'Aoede',
+    gender: 'Female',
+    category: 'Characters & Drama',
+    tone: 'Playful spirit deity, whimsical cadence & musical giggles',
+    bestFor: 'Anime dubs, fantasy companions, whimsical games',
+    avatarColor: 'from-amber-400 to-rose-500',
+    sampleEmotion: 'Teasing, playful, and mysterious',
+    auditionQuote:
+      'Did you truly think you could catch a spirit unawares? <laugh> How delightfully ambitious of you!',
+    personaPrompt:
+      'Whimsical anime fox spirit, airy melodic intonation, teasing cadences and soft mischievous laughter',
+  },
+  {
+    id: 'Sterling',
+    name: 'Prof. Sterling',
+    baseVoice: 'Zephyr',
+    gender: 'Male',
+    category: 'Characters & Drama',
+    tone: 'Oxford antiquarian, erudite warmth & breathless excitement',
+    bestFor: 'Documentaries, archeology lore, historical lectures',
+    avatarColor: 'from-teal-600 to-indigo-800',
+    sampleEmotion: 'Erudite, warm, and enthusiastically scholarly',
+    auditionQuote:
+      'Good heavens! Look at the inscription! <gasp> This predates the third dynasty by at least four centuries!',
+    personaPrompt:
+      'Distinguished academic antiquarian, British scholarly warmth, articulate diction and spontaneous excited gasps',
+  },
+  {
+    id: 'Garrick',
+    name: 'Garrick Forge',
+    baseVoice: 'Charon',
+    gender: 'Male',
+    category: 'Characters & Drama',
+    tone: 'Dwarven master smith, roaring baritone & hearty laughs',
+    bestFor: 'Fantasy RPGs, barbarian warriors, tavern storytelling',
+    avatarColor: 'from-orange-600 to-stone-900',
+    sampleEmotion: 'Hearty, booming, and fiercely proud',
+    auditionQuote:
+      'By the ancient flame! <laugh> That is proper steel you hold there, forged with sweat and dwarven pride!',
+    personaPrompt:
+      'Hearty dwarven blacksmith, raspy resonant baritone, robust belly laughs and thunderous energetic conviction',
+  },
+  {
+    id: 'Selene',
+    name: 'Selene Lunar',
+    baseVoice: 'Aoede',
+    gender: 'Female',
+    category: 'Characters & Drama',
+    tone: 'Moon priestess, tranquil crystal whispers & cosmic calm',
+    bestFor: 'Guided meditations, astral journeys, fantasy seers',
+    avatarColor: 'from-violet-400 to-sky-600',
+    sampleEmotion: 'Tranquil, hypnotic, and celestial',
+    auditionQuote:
+      'Release the burdens of the day... <breath> The moonlight weaves a canopy of quiet peace around your spirit.',
+    personaPrompt:
+      'Ethereal celestial priestess, ultra-soft breathy delivery, slow meditative pauses and soothing melodic warmth',
+  },
+  {
+    id: 'Grimaldi',
+    name: 'Ringmaster Grimaldi',
+    baseVoice: 'Puck',
+    gender: 'Male',
+    category: 'Characters & Drama',
+    tone: 'Vintage carnival maestro, theatrical bombast & grand trills',
+    bestFor: 'Circus extravaganzas, animated villains, showmen',
+    avatarColor: 'from-red-600 to-amber-500',
+    sampleEmotion: 'Flamboyant, grandiose, and electric',
+    auditionQuote:
+      'Step right up, ladies and gentlemen! <laugh> Prepare to witness marvels beyond your wildest imaginings!',
+    personaPrompt:
+      'Electrifying vintage showman, theatrical crescendo, rolling enthusiasm and charismatic high-energy flair',
+  },
+  {
+    id: 'Thorne',
+    name: 'Dr. Aris Thorne',
+    baseVoice: 'Puck',
+    gender: 'Male',
+    category: 'Cinematic & Sci-Fi',
+    tone: 'Eccentric cyber-scientist, rapid-fire genius & manic mutterings',
+    bestFor: 'Cyberpunk laboratories, rogue AI creators, mad scientists',
+    avatarColor: 'from-emerald-400 to-cyan-700',
+    sampleEmotion: 'Manic, rapid, and intensely inspired',
+    auditionQuote:
+      'The synaptic resonance is stabilizing! <gasp> Don’t you see? We’ve bridged the quantum barrier at last!',
+    personaPrompt:
+      'Fast-talking eccentric cyber-scientist, breathy nervous excitement, lightning cadence and sudden revelatory gasps',
+  },
 ];
 
 export interface LanguageOption {

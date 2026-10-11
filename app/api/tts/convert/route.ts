@@ -6,22 +6,33 @@ const FORMAT_CONFIG: Record<
   { args: (bitrate: string) => string[]; mimeType: string; ext: string }
 > = {
   mp3: {
-    args: (b) => ['-c:a', 'libmp3lame', '-b:a', b, '-f', 'mp3'],
+    args: (b) => [
+      '-threads',
+      '2',
+      '-c:a',
+      'libmp3lame',
+      '-b:a',
+      b,
+      '-compression_level',
+      '2',
+      '-f',
+      'mp3',
+    ],
     mimeType: 'audio/mpeg',
     ext: 'mp3',
   },
   aac: {
-    args: (b) => ['-c:a', 'aac', '-b:a', b, '-f', 'adts'],
+    args: (b) => ['-threads', '2', '-c:a', 'aac', '-b:a', b, '-f', 'adts'],
     mimeType: 'audio/aac',
     ext: 'aac',
   },
   flac: {
-    args: () => ['-c:a', 'flac', '-f', 'flac'],
+    args: () => ['-threads', '2', '-c:a', 'flac', '-compression_level', '3', '-f', 'flac'],
     mimeType: 'audio/flac',
     ext: 'flac',
   },
   ogg: {
-    args: (b) => ['-c:a', 'libvorbis', '-b:a', b, '-f', 'ogg'],
+    args: (b) => ['-threads', '2', '-c:a', 'libvorbis', '-b:a', b, '-f', 'ogg'],
     mimeType: 'audio/ogg',
     ext: 'ogg',
   },

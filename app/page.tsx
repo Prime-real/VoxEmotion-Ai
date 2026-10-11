@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Mic,
   Users,
@@ -24,9 +24,15 @@ import ShowcasePresetBar, {
 } from '@/components/ShowcasePresetBar';
 import VoiceCloningStudio from '@/components/VoiceCloningStudio';
 import { VoiceOption } from '@/lib/tts-constants';
-
-const STORAGE_KEY = 'voxemotion_audio_history_v1';
-const CLONED_VOICES_STORAGE_KEY = 'voxemotion_cloned_voices_v1';
+import {
+  dbSaveTrack,
+  dbGetTracks,
+  dbDeleteTrack,
+  dbClearTracks,
+  dbSaveClonedVoice,
+  dbGetClonedVoices,
+  dbDeleteClonedVoice,
+} from '@/lib/audio-storage';
 
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<
@@ -38,27 +44,27 @@ export default function HomePage() {
   const [activeVoiceOverride, setActiveVoiceOverride] =
     useState<VoiceOption | null>(null);
 
-  // Audio history state
-  const [history, setHistory] = useState<AudioTrackMetadata[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+  // Audio history state (IndexedDB backed)
+  const [history, setHistory] = useState<AudioTrackMetadata[]>([]);
 
-  // Cloned voices state
-  const [clonedVoices, setClonedVoices] = useState<VoiceOption[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const stored = localStorage.getItem(CLONED_VOICES_STORAGE_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+  // Cloned voices state (IndexedDB backed)
+  const [clonedVoices, setClonedVoices] = useState<VoiceOption[]>([]);
+
+  // Load from IndexedDB on startup
+  useEffect(() => {
+    dbGetTracks().then((tracks) => {
+      if (tracks.length > 0) {
+        setHistory(tracks);
+        setCurrentTrack((prev) => prev || tracks[0]);
+      }
+    });
+
+    dbGetClonedVoices().then((voices) => {
+      if (voices.length > 0) {
+        setClonedVoices(voices);
+      }
+    });
+  }, []);
 
   const [isSynthesizingShowcase, setIsSynthesizingShowcase] = useState(false);
   const [showcaseNotice, setShowcaseNotice] = useState<string | null>(null);
@@ -67,49 +73,23 @@ export default function HomePage() {
     setCurrentTrack(track);
     setHistory((prev) => {
       const filtered = prev.filter((t) => t.timestamp !== track.timestamp);
-      const updated = [track, ...filtered].slice(0, 25);
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch {
-        try {
-          const trimmed = updated.slice(0, 10);
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
-        } catch {
-          // ignore
-        }
-      }
-      return updated;
+      return [track, ...filtered];
     });
+    // Async background IndexedDB persist (0 main-thread blocking)
+    dbSaveTrack(track);
   };
 
   const handleSaveClonedVoice = (voice: VoiceOption) => {
     setClonedVoices((prev) => {
       const updated = [voice, ...prev.filter((v) => v.id !== voice.id)];
-      try {
-        localStorage.setItem(
-          CLONED_VOICES_STORAGE_KEY,
-          JSON.stringify(updated)
-        );
-      } catch (e) {
-        console.warn(e);
-      }
       return updated;
     });
+    dbSaveClonedVoice(voice);
   };
 
   const handleDeleteClonedVoice = (id: string) => {
-    setClonedVoices((prev) => {
-      const updated = prev.filter((v) => v.id !== id);
-      try {
-        localStorage.setItem(
-          CLONED_VOICES_STORAGE_KEY,
-          JSON.stringify(updated)
-        );
-      } catch (e) {
-        console.warn(e);
-      }
-      return updated;
-    });
+    setClonedVoices((prev) => prev.filter((v) => v.id !== id));
+    dbDeleteClonedVoice(id);
   };
 
   const handleSelectClonedVoiceForStudio = (voice: VoiceOption) => {
@@ -119,24 +99,13 @@ export default function HomePage() {
 
   const handleDeleteHistoryTrack = (timestamp?: number) => {
     if (!timestamp) return;
-    setHistory((prev) => {
-      const updated = prev.filter((t) => t.timestamp !== timestamp);
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch {
-        // ignore
-      }
-      return updated;
-    });
+    setHistory((prev) => prev.filter((t) => t.timestamp !== timestamp));
+    dbDeleteTrack(timestamp);
   };
 
   const handleClearHistory = () => {
     setHistory([]);
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // ignore
-    }
+    dbClearTracks();
   };
 
   // One-click audition preset handler

@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { VoiceOption, VOICES } from '@/lib/tts-constants';
+import { dbGetCachedAudition, dbSaveCachedAudition } from '@/lib/audio-storage';
 import {
   Play,
   Square,
@@ -84,25 +85,46 @@ export default function VoiceSelectorCards({
     setPreviewingVoiceId(voice.id);
     setIsLoadingPreview(true);
 
-    try {
-      const res = await fetch('/api/tts/preview-voice', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          voiceId: voice.id,
-          baseVoice: voice.baseVoice || voice.id,
-          style: voice.sampleEmotion,
-          personaPrompt: voice.personaPrompt || '',
-          auditionQuote: voice.auditionQuote,
-        }),
-      });
+    const cacheKey = `${voice.id}_${voice.auditionQuote}`;
 
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'Failed to load voice audition.');
+    try {
+      // 1. Check local IndexedDB cache first for 0ms instant playback
+      const cachedBase64 = await dbGetCachedAudition(cacheKey);
+      let audioBase64 = cachedBase64;
+      let mimeType = 'audio/wav';
+
+      if (!audioBase64) {
+        const res = await fetch('/api/tts/preview-voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            voiceId: voice.id,
+            baseVoice: voice.baseVoice || voice.id,
+            style: voice.sampleEmotion,
+            personaPrompt: voice.personaPrompt || '',
+            auditionQuote: voice.auditionQuote,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to load voice audition.');
+        }
+
+        audioBase64 = data.audioBase64;
+        mimeType = data.mimeType || 'audio/wav';
+
+        if (audioBase64) {
+          // Save to local cache asynchronously
+          dbSaveCachedAudition(cacheKey, audioBase64);
+        }
       }
 
-      const audio = new Audio(`data:${data.mimeType || 'audio/wav'};base64,${data.audioBase64}`);
+      if (!audioBase64) {
+        throw new Error('No audio data available for preview.');
+      }
+
+      const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
       previewAudioRef.current = audio;
 
       audio.onended = () => {

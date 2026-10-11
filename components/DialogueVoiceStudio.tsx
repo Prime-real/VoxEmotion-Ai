@@ -20,7 +20,10 @@ import {
   MessageSquare,
   Zap,
   Info,
+  Play,
+  Square,
 } from 'lucide-react';
+import { dbGetCachedAudition, dbSaveCachedAudition } from '@/lib/audio-storage';
 
 interface DialogueLine {
   id: string;
@@ -95,6 +98,96 @@ export default function DialogueVoiceStudio({
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [selectedGenre, setSelectedGenre] = useState('Tech Podcast Banter');
+  const [previewingVoiceId, setPreviewingVoiceId] = useState<string | null>(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
+  const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
+
+  // Stop audition audio on unmount
+  React.useEffect(() => {
+    return () => {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleTogglePreview = async (voice: VoiceOption) => {
+    if (previewingVoiceId === voice.id) {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+      setPreviewingVoiceId(null);
+      setIsLoadingPreview(false);
+      return;
+    }
+
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
+
+    setPreviewingVoiceId(voice.id);
+    setIsLoadingPreview(true);
+
+    const cacheKey = `${voice.id}_${voice.auditionQuote}`;
+
+    try {
+      const cachedBase64 = await dbGetCachedAudition(cacheKey);
+      let audioBase64 = cachedBase64;
+      let mimeType = 'audio/wav';
+
+      if (!audioBase64) {
+        const res = await fetch('/api/tts/preview-voice', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            voiceId: voice.id,
+            baseVoice: voice.baseVoice || voice.id,
+            style: voice.sampleEmotion,
+            personaPrompt: voice.personaPrompt || '',
+            auditionQuote: voice.auditionQuote,
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Failed to load audition preview.');
+        }
+
+        audioBase64 = data.audioBase64;
+        mimeType = data.mimeType || 'audio/wav';
+
+        if (audioBase64) {
+          dbSaveCachedAudition(cacheKey, audioBase64);
+        }
+      }
+
+      if (!audioBase64) {
+        throw new Error('No audio returned for preview');
+      }
+
+      const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
+      previewAudioRef.current = audio;
+
+      audio.onended = () => {
+        setPreviewingVoiceId(null);
+        setIsLoadingPreview(false);
+      };
+      audio.onerror = () => {
+        setPreviewingVoiceId(null);
+        setIsLoadingPreview(false);
+      };
+
+      await audio.play();
+      setIsLoadingPreview(false);
+    } catch (err) {
+      console.error(err);
+      setPreviewingVoiceId(null);
+      setIsLoadingPreview(false);
+    }
+  };
 
   const addLine = () => {
     const lastSpeaker = lines[lines.length - 1]?.speaker;
@@ -387,6 +480,37 @@ export default function DialogueVoiceStudio({
                   ))}
                 </optgroup>
               </select>
+              <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-indigo-500/20">
+                <span className="text-[10px] text-slate-400 truncate max-w-[170px]" title={speaker1.voice.sampleEmotion}>
+                  {speaker1.voice.sampleEmotion}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleTogglePreview(speaker1.voice)}
+                  className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-all cursor-pointer ${
+                    previewingVoiceId === speaker1.voice.id
+                      ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/40'
+                      : 'bg-indigo-900/40 text-indigo-200 hover:text-white hover:bg-indigo-800/60 border border-indigo-500/30'
+                  }`}
+                  title={`Preview audition for ${speaker1.voice.name}`}
+                >
+                  {previewingVoiceId === speaker1.voice.id ? (
+                    isLoadingPreview ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <>
+                        <Square className="h-2.5 w-2.5 fill-current" />
+                        <span>Stop</span>
+                      </>
+                    )
+                  ) : (
+                    <>
+                      <Play className="h-2.5 w-2.5 fill-current ml-0.5" />
+                      <span>Audition Voice</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -460,6 +584,37 @@ export default function DialogueVoiceStudio({
                   ))}
                 </optgroup>
               </select>
+              <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-violet-500/20">
+                <span className="text-[10px] text-slate-400 truncate max-w-[170px]" title={speaker2.voice.sampleEmotion}>
+                  {speaker2.voice.sampleEmotion}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleTogglePreview(speaker2.voice)}
+                  className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-all cursor-pointer ${
+                    previewingVoiceId === speaker2.voice.id
+                      ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/40'
+                      : 'bg-violet-900/40 text-violet-200 hover:text-white hover:bg-violet-800/60 border border-violet-500/30'
+                  }`}
+                  title={`Preview audition for ${speaker2.voice.name}`}
+                >
+                  {previewingVoiceId === speaker2.voice.id ? (
+                    isLoadingPreview ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <>
+                        <Square className="h-2.5 w-2.5 fill-current" />
+                        <span>Stop</span>
+                      </>
+                    )
+                  ) : (
+                    <>
+                      <Play className="h-2.5 w-2.5 fill-current ml-0.5" />
+                      <span>Audition Voice</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

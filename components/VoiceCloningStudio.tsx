@@ -76,6 +76,7 @@ export default function VoiceCloningStudio({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [generatedClone, setGeneratedClone] = useState<VoiceOption | null>(null);
   const [isPreviewingResult, setIsPreviewingResult] = useState(false);
+  const [previewingSavedVoiceId, setPreviewingSavedVoiceId] = useState<string | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Cleanup on unmount
@@ -277,6 +278,56 @@ export default function VoiceCloningStudio({
     } catch (err: any) {
       console.error(err);
       setIsPreviewingResult(false);
+    }
+  };
+
+  const handlePreviewSavedVoice = async (voice: VoiceOption) => {
+    if (previewingSavedVoiceId === voice.id) {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+      setPreviewingSavedVoiceId(null);
+      return;
+    }
+
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
+
+    setPreviewingSavedVoiceId(voice.id);
+
+    try {
+      const res = await fetch('/api/tts/preview-voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          voiceId: voice.id,
+          baseVoice: voice.baseVoice || 'Zephyr',
+          style: voice.sampleEmotion,
+          personaPrompt: voice.personaPrompt,
+          auditionQuote: voice.auditionQuote,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Preview failed.');
+      }
+
+      const audio = new Audio(
+        `data:${data.mimeType || 'audio/wav'};base64,${data.audioBase64}`
+      );
+      previewAudioRef.current = audio;
+
+      audio.onended = () => setPreviewingSavedVoiceId(null);
+      audio.onerror = () => setPreviewingSavedVoiceId(null);
+
+      await audio.play();
+    } catch (err) {
+      console.error(err);
+      setPreviewingSavedVoiceId(null);
     }
   };
 
@@ -627,7 +678,29 @@ export default function VoiceCloningStudio({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <button
+                        type="button"
+                        onClick={() => handlePreviewSavedVoice(voice)}
+                        className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition-all cursor-pointer ${
+                          previewingSavedVoiceId === voice.id
+                            ? 'bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/30'
+                            : 'bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700'
+                        }`}
+                        title="Audition cloned voice sample"
+                      >
+                        {previewingSavedVoiceId === voice.id ? (
+                          <>
+                            <Square className="h-2.5 w-2.5 fill-current" />
+                            <span>Stop</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-2.5 w-2.5 fill-current ml-0.5" />
+                            <span>Audition</span>
+                          </>
+                        )}
+                      </button>
                       <button
                         onClick={() => onSelectForStudio(voice)}
                         className="rounded-lg bg-indigo-600/20 hover:bg-indigo-600 px-2 py-1 text-[11px] font-medium text-indigo-300 hover:text-white transition-colors cursor-pointer"

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { AudioTrackMetadata } from './AudioWorkstationPlayer';
 import {
   History,
@@ -54,24 +54,26 @@ export default function AudioHistoryLibrary({
     }
   };
 
-  // Filtered tracks
-  const filteredTracks = history.filter((item) => {
-    const matchesLang =
-      filterLang === 'All' ||
-      item.language.toLowerCase() === filterLang.toLowerCase();
-    const matchesQuery =
-      !searchQuery.trim() ||
-      (item.textSnippet &&
-        item.textSnippet.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      item.voice.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.style &&
-        item.style.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesLang && matchesQuery;
-  });
+  // Optimized memoized filtered tracks and languages
+  const uniqueLanguages = useMemo(() => {
+    return Array.from(new Set(history.map((h) => h.language))).filter(Boolean);
+  }, [history]);
 
-  const uniqueLanguages = Array.from(
-    new Set(history.map((h) => h.language))
-  ).filter(Boolean);
+  const filteredTracks = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return history.filter((item) => {
+      const matchesLang =
+        filterLang === 'All' ||
+        item.language.toLowerCase() === filterLang.toLowerCase();
+      if (!matchesLang) return false;
+      if (!q) return true;
+      return (
+        (item.textSnippet && item.textSnippet.toLowerCase().includes(q)) ||
+        item.voice.toLowerCase().includes(q) ||
+        (item.style && item.style.toLowerCase().includes(q))
+      );
+    });
+  }, [history, filterLang, searchQuery]);
 
   if (history.length === 0) {
     return (
@@ -98,13 +100,22 @@ export default function AudioHistoryLibrary({
           </h3>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Instant Search Bar */}
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search script, voice..."
+            className="rounded-lg border border-slate-700 bg-slate-800/90 px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-36 sm:w-44"
+          />
+
           {/* Language filter */}
           {uniqueLanguages.length > 1 && (
             <select
               value={filterLang}
               onChange={(e) => setFilterLang(e.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-slate-300 focus:outline-none"
+              className="rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-slate-300 focus:outline-none cursor-pointer"
             >
               <option value="All">All Languages</option>
               {uniqueLanguages.map((l) => (
