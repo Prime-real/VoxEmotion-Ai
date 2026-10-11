@@ -23,7 +23,7 @@ import {
   Play,
   Square,
 } from 'lucide-react';
-import { dbGetCachedAudition, dbSaveCachedAudition } from '@/lib/audio-storage';
+import { dbGetCachedAudition, dbSaveCachedAudition, AutoDownloadConfig } from '@/lib/audio-storage';
 
 interface DialogueLine {
   id: string;
@@ -35,11 +35,15 @@ interface DialogueLine {
 interface DialogueVoiceStudioProps {
   onAudioGenerated: (track: AudioTrackMetadata) => void;
   customClonedVoices?: VoiceOption[];
+  autoDownloadConfig?: AutoDownloadConfig;
+  onUpdateAutoDownloadConfig?: (config: AutoDownloadConfig) => void;
 }
 
 export default function DialogueVoiceStudio({
   onAudioGenerated,
   customClonedVoices = [],
+  autoDownloadConfig,
+  onUpdateAutoDownloadConfig,
 }: DialogueVoiceStudioProps) {
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageOption>(
     LANGUAGES[0]
@@ -739,8 +743,50 @@ export default function DialogueVoiceStudio({
           </div>
         )}
 
-        {/* Synthesize Screenplay */}
-        <div className="flex justify-end pt-2">
+        {/* Synthesize Screenplay & Auto-Download Quick Switch */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+          {autoDownloadConfig && onUpdateAutoDownloadConfig ? (
+            <button
+              type="button"
+              onClick={() =>
+                onUpdateAutoDownloadConfig({
+                  ...autoDownloadConfig,
+                  enabled: !autoDownloadConfig.enabled,
+                })
+              }
+              title={
+                autoDownloadConfig.enabled
+                  ? `Auto-download is ON (${autoDownloadConfig.format.toUpperCase()}). Every synthesized dialogue is immediately downloaded.`
+                  : 'Turn ON auto-download for newly synthesized dialogues'
+              }
+              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition-all cursor-pointer ${
+                autoDownloadConfig.enabled
+                  ? 'border-cyan-500/50 bg-cyan-950/60 text-cyan-300 shadow-sm shadow-cyan-500/20 ring-1 ring-cyan-500/30'
+                  : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Zap
+                className={`h-4 w-4 ${
+                  autoDownloadConfig.enabled
+                    ? 'text-cyan-400 fill-cyan-400 animate-pulse'
+                    : 'text-slate-500'
+                }`}
+              />
+              <span className="text-slate-300">Auto-Download:</span>
+              <span
+                className={`font-semibold ${
+                  autoDownloadConfig.enabled ? 'text-cyan-300' : 'text-slate-500'
+                }`}
+              >
+                {autoDownloadConfig.enabled
+                  ? `ON (${autoDownloadConfig.format.toUpperCase()})`
+                  : 'OFF'}
+              </span>
+            </button>
+          ) : (
+            <div />
+          )}
+
           <button
             onClick={handleSynthesizeDialogue}
             disabled={isGenerating}

@@ -30,7 +30,14 @@ import {
   Sliders,
   Square,
 } from 'lucide-react';
-import { dbGetCachedAudition, dbSaveCachedAudition } from '@/lib/audio-storage';
+import {
+  dbGetCachedAudition,
+  dbSaveCachedAudition,
+  AutoDownloadConfig,
+  getAutoDownloadConfig,
+  saveAutoDownloadConfig,
+  triggerAudioDownload,
+} from '@/lib/audio-storage';
 import {
   VOICES,
   LANGUAGES,
@@ -58,12 +65,16 @@ interface AudioWorkstationPlayerProps {
   onAudioGenerated?: (track: AudioTrackMetadata) => void;
   onClear?: () => void;
   customClonedVoices?: VoiceOption[];
+  autoDownloadConfig?: AutoDownloadConfig;
+  onUpdateAutoDownloadConfig?: (config: AutoDownloadConfig) => void;
 }
 
 export default function AudioWorkstationPlayer({
   track,
   onAudioGenerated,
   customClonedVoices = [],
+  autoDownloadConfig,
+  onUpdateAutoDownloadConfig,
 }: AudioWorkstationPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -92,6 +103,48 @@ export default function AudioWorkstationPlayer({
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportNotice, setExportNotice] = useState<string | null>(null);
+
+  // Auto-Download Exported Voice State
+  const [localAutoDownload, setLocalAutoDownload] = useState<AutoDownloadConfig>(() =>
+    autoDownloadConfig || getAutoDownloadConfig()
+  );
+
+  const activeAutoDownload = autoDownloadConfig || localAutoDownload;
+
+  const handleToggleAutoDownload = () => {
+    const nextState = !activeAutoDownload.enabled;
+    const updated: AutoDownloadConfig = {
+      ...activeAutoDownload,
+      enabled: nextState,
+    };
+    if (onUpdateAutoDownloadConfig) {
+      onUpdateAutoDownloadConfig(updated);
+    } else {
+      setLocalAutoDownload(updated);
+      saveAutoDownloadConfig(updated);
+    }
+    setExportNotice(
+      nextState
+        ? `⚡ Auto-download enabled (${updated.format.toUpperCase()}). Every synthesized voice will automatically download!`
+        : 'Auto-download voice disabled.'
+    );
+    setTimeout(() => setExportNotice(null), 3500);
+  };
+
+  const handleSetAutoDownloadFormat = (fmt: ExportFormat) => {
+    const updated: AutoDownloadConfig = {
+      ...activeAutoDownload,
+      format: fmt,
+    };
+    if (onUpdateAutoDownloadConfig) {
+      onUpdateAutoDownloadConfig(updated);
+    } else {
+      setLocalAutoDownload(updated);
+      saveAutoDownloadConfig(updated);
+    }
+    setExportNotice(`Auto-download format updated to ${fmt.toUpperCase()}`);
+    setTimeout(() => setExportNotice(null), 2500);
+  };
 
   // Prompt Box State
   const [showPromptBox, setShowPromptBox] = useState(true);
@@ -781,6 +834,39 @@ export default function AudioWorkstationPlayer({
             <span className="hidden sm:inline">{copied ? 'Copied' : 'Share'}</span>
           </button>
 
+          {/* Auto-Download Exported Voice Toggle */}
+          <button
+            onClick={handleToggleAutoDownload}
+            title={
+              activeAutoDownload.enabled
+                ? `Auto-Download is ON (${activeAutoDownload.format.toUpperCase()}). Every synthesized voice will automatically download to your device.`
+                : 'Turn ON Auto-Download for synthesized voices'
+            }
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all cursor-pointer ${
+              activeAutoDownload.enabled
+                ? 'border-cyan-500/50 bg-cyan-950/60 text-cyan-300 shadow-sm shadow-cyan-500/25 ring-1 ring-cyan-500/40'
+                : 'border-slate-800 bg-slate-800/60 text-slate-400 hover:bg-slate-700/80 hover:text-slate-200'
+            }`}
+          >
+            <Zap
+              className={`h-3.5 w-3.5 ${
+                activeAutoDownload.enabled
+                  ? 'text-cyan-400 fill-cyan-400 animate-pulse'
+                  : 'text-slate-500'
+              }`}
+            />
+            <span className="hidden sm:inline">Auto-DL:</span>
+            <span
+              className={`font-semibold ${
+                activeAutoDownload.enabled ? 'text-cyan-300' : 'text-slate-400'
+              }`}
+            >
+              {activeAutoDownload.enabled
+                ? `ON (${activeAutoDownload.format.toUpperCase()})`
+                : 'OFF'}
+            </span>
+          </button>
+
           {/* Export Multi-Format Dropdown Button */}
           <div className="relative">
             <div className="flex items-center rounded-lg shadow-md shadow-indigo-600/30 overflow-hidden">
@@ -812,7 +898,7 @@ export default function AudioWorkstationPlayer({
 
             {/* Export Menu Dropdown */}
             {showExportMenu && (
-              <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-slate-700 bg-slate-900/95 p-2 shadow-2xl backdrop-blur-2xl z-50">
+              <div className="absolute right-0 top-full mt-2 w-72 rounded-xl border border-slate-700 bg-slate-900/95 p-2.5 shadow-2xl backdrop-blur-2xl z-50">
                 <div className="px-2 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800">
                   Select Export Format
                 </div>
@@ -902,6 +988,49 @@ export default function AudioWorkstationPlayer({
                         }`}
                       >
                         {b}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Auto-Download Exported Voice Settings Section */}
+                <div className="mt-2.5 pt-2.5 border-t border-slate-800/90">
+                  <div className="flex items-center justify-between px-1 mb-1">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-200">
+                      <Zap className={`h-3 w-3 ${activeAutoDownload.enabled ? 'text-cyan-400 fill-cyan-400' : 'text-slate-500'}`} />
+                      <span>Auto-Download Exported Voice</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleAutoDownload}
+                      className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                        activeAutoDownload.enabled ? 'bg-cyan-500' : 'bg-slate-700'
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                          activeAutoDownload.enabled ? 'translate-x-3' : 'translate-x-0'
+                        }`}
+                      />
+                    </button>
+                  </div>
+                  <p className="px-1 text-[10px] text-slate-400 mb-2 leading-tight">
+                    Automatically saves newly generated voices immediately to your computer.
+                  </p>
+                  <div className="flex items-center gap-1 px-1 flex-wrap">
+                    <span className="text-[10px] text-slate-400 mr-1">Format:</span>
+                    {(['wav', 'mp3', 'aac', 'flac', 'ogg'] as const).map((fmt) => (
+                      <button
+                        key={fmt}
+                        type="button"
+                        onClick={() => handleSetAutoDownloadFormat(fmt)}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-mono uppercase transition-colors cursor-pointer ${
+                          activeAutoDownload.format === fmt
+                            ? 'bg-cyan-600 text-white font-bold ring-1 ring-cyan-400'
+                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {fmt}
                       </button>
                     ))}
                   </div>

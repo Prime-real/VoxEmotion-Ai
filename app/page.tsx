@@ -32,6 +32,10 @@ import {
   dbSaveClonedVoice,
   dbGetClonedVoices,
   dbDeleteClonedVoice,
+  AutoDownloadConfig,
+  getAutoDownloadConfig,
+  saveAutoDownloadConfig,
+  triggerAudioDownload,
 } from '@/lib/audio-storage';
 
 export default function HomePage() {
@@ -49,6 +53,17 @@ export default function HomePage() {
 
   // Cloned voices state (IndexedDB backed)
   const [clonedVoices, setClonedVoices] = useState<VoiceOption[]>([]);
+
+  // Auto-Download Exported Voice State (synced with localStorage)
+  const [autoDownloadConfig, setAutoDownloadConfig] = useState<AutoDownloadConfig>(
+    () => getAutoDownloadConfig()
+  );
+  const [autoDownloadNotice, setAutoDownloadNotice] = useState<string | null>(null);
+
+  const handleUpdateAutoDownloadConfig = (config: AutoDownloadConfig) => {
+    setAutoDownloadConfig(config);
+    saveAutoDownloadConfig(config);
+  };
 
   // Load from IndexedDB on startup
   useEffect(() => {
@@ -69,7 +84,7 @@ export default function HomePage() {
   const [isSynthesizingShowcase, setIsSynthesizingShowcase] = useState(false);
   const [showcaseNotice, setShowcaseNotice] = useState<string | null>(null);
 
-  const handleAudioGenerated = (track: AudioTrackMetadata) => {
+  const handleAudioGenerated = async (track: AudioTrackMetadata) => {
     setCurrentTrack(track);
     setHistory((prev) => {
       const filtered = prev.filter((t) => t.timestamp !== track.timestamp);
@@ -77,6 +92,21 @@ export default function HomePage() {
     });
     // Async background IndexedDB persist (0 main-thread blocking)
     dbSaveTrack(track);
+
+    // Automatic download of exported voice if enabled!
+    if (autoDownloadConfig.enabled && track.audioBase64) {
+      try {
+        const savedFilename = await triggerAudioDownload(
+          track,
+          autoDownloadConfig.format,
+          autoDownloadConfig.bitrate
+        );
+        setAutoDownloadNotice(`⬇ Automatically downloaded: ${savedFilename}`);
+        setTimeout(() => setAutoDownloadNotice(null), 4000);
+      } catch (err: any) {
+        console.error('Auto download failed:', err);
+      }
+    }
   };
 
   const handleSaveClonedVoice = (voice: VoiceOption) => {
@@ -250,6 +280,19 @@ export default function HomePage() {
           </div>
         )}
 
+        {/* Auto-Download notification banner */}
+        {autoDownloadNotice && (
+          <div className="rounded-xl border border-cyan-500/40 bg-cyan-950/70 p-3 text-xs text-cyan-200 flex items-center justify-between shadow-lg shadow-cyan-950/40">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-cyan-400 fill-cyan-400 animate-pulse" />
+              <span>{autoDownloadNotice}</span>
+            </div>
+            <span className="font-mono text-[10px] text-cyan-300 bg-cyan-900/60 px-2 py-0.5 rounded border border-cyan-500/30">
+              Auto-DL Active ({autoDownloadConfig.format.toUpperCase()})
+            </span>
+          </div>
+        )}
+
         {/* 1. Quick Audition Showcase Bar */}
         <ShowcasePresetBar onSelectPreset={handleSelectShowcase} />
 
@@ -259,6 +302,8 @@ export default function HomePage() {
             track={currentTrack}
             onAudioGenerated={handleAudioGenerated}
             customClonedVoices={clonedVoices}
+            autoDownloadConfig={autoDownloadConfig}
+            onUpdateAutoDownloadConfig={handleUpdateAutoDownloadConfig}
           />
         </section>
 
@@ -269,6 +314,8 @@ export default function HomePage() {
               onAudioGenerated={handleAudioGenerated}
               customClonedVoices={clonedVoices}
               activeVoiceOverride={activeVoiceOverride}
+              autoDownloadConfig={autoDownloadConfig}
+              onUpdateAutoDownloadConfig={handleUpdateAutoDownloadConfig}
             />
           </section>
         )}
@@ -278,6 +325,8 @@ export default function HomePage() {
             <DialogueVoiceStudio
               onAudioGenerated={handleAudioGenerated}
               customClonedVoices={clonedVoices}
+              autoDownloadConfig={autoDownloadConfig}
+              onUpdateAutoDownloadConfig={handleUpdateAutoDownloadConfig}
             />
           </section>
         )}
@@ -301,6 +350,8 @@ export default function HomePage() {
               onSelectTrack={(t) => setCurrentTrack(t)}
               onDeleteTrack={handleDeleteHistoryTrack}
               onClearHistory={handleClearHistory}
+              autoDownloadConfig={autoDownloadConfig}
+              onUpdateAutoDownloadConfig={handleUpdateAutoDownloadConfig}
             />
           </section>
         )}

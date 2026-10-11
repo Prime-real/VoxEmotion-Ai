@@ -29,17 +29,22 @@ import {
 } from 'lucide-react';
 
 import VoiceSelectorCards from './VoiceSelectorCards';
+import { AutoDownloadConfig } from '@/lib/audio-storage';
 
 interface SoloVoiceStudioProps {
   onAudioGenerated: (track: AudioTrackMetadata) => void;
   customClonedVoices?: VoiceOption[];
   activeVoiceOverride?: VoiceOption | null;
+  autoDownloadConfig?: AutoDownloadConfig;
+  onUpdateAutoDownloadConfig?: (config: AutoDownloadConfig) => void;
 }
 
 export default function SoloVoiceStudio({
   onAudioGenerated,
   customClonedVoices = [],
   activeVoiceOverride = null,
+  autoDownloadConfig,
+  onUpdateAutoDownloadConfig,
 }: SoloVoiceStudioProps) {
   // Studio State
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageOption>(
@@ -518,8 +523,50 @@ export default function SoloVoiceStudio({
           </div>
         )}
 
-        {/* Action Button */}
-        <div className="mt-5 flex justify-end">
+        {/* Action Button & Auto-Download Quick Switch */}
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+          {autoDownloadConfig && onUpdateAutoDownloadConfig ? (
+            <button
+              type="button"
+              onClick={() =>
+                onUpdateAutoDownloadConfig({
+                  ...autoDownloadConfig,
+                  enabled: !autoDownloadConfig.enabled,
+                })
+              }
+              title={
+                autoDownloadConfig.enabled
+                  ? `Auto-download is ON (${autoDownloadConfig.format.toUpperCase()}). Every synthesized voice is immediately downloaded.`
+                  : 'Turn ON auto-download for newly synthesized voices'
+              }
+              className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium transition-all cursor-pointer ${
+                autoDownloadConfig.enabled
+                  ? 'border-cyan-500/50 bg-cyan-950/60 text-cyan-300 shadow-sm shadow-cyan-500/20 ring-1 ring-cyan-500/30'
+                  : 'border-slate-800 bg-slate-900/70 text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Zap
+                className={`h-4 w-4 ${
+                  autoDownloadConfig.enabled
+                    ? 'text-cyan-400 fill-cyan-400 animate-pulse'
+                    : 'text-slate-500'
+                }`}
+              />
+              <span className="text-slate-300">Auto-Download:</span>
+              <span
+                className={`font-semibold ${
+                  autoDownloadConfig.enabled ? 'text-cyan-300' : 'text-slate-500'
+                }`}
+              >
+                {autoDownloadConfig.enabled
+                  ? `ON (${autoDownloadConfig.format.toUpperCase()})`
+                  : 'OFF'}
+              </span>
+            </button>
+          ) : (
+            <div />
+          )}
+
           <button
             onClick={handleSynthesize}
             disabled={isGenerating || !text.trim()}

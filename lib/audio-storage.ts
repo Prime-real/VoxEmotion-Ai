@@ -218,3 +218,131 @@ export async function dbSaveCachedAudition(cacheKey: string, audioBase64: string
     // ignore
   }
 }
+
+// --- Auto-Download Exported Voice Configuration & Trigger ---
+export type ExportFormat = 'wav' | 'mp3' | 'aac' | 'flac' | 'ogg';
+
+export interface AutoDownloadConfig {
+  enabled: boolean;
+  format: ExportFormat;
+  bitrate: '128k' | '192k' | '256k' | '320k';
+}
+
+const DEFAULT_AUTO_DOWNLOAD_CONFIG: AutoDownloadConfig = {
+  enabled: false,
+  format: 'wav',
+  bitrate: '192k',
+};
+
+export function getAutoDownloadConfig(): AutoDownloadConfig {
+  if (typeof window === 'undefined') {
+    return DEFAULT_AUTO_DOWNLOAD_CONFIG;
+  }
+  try {
+    const raw = localStorage.getItem('voxemotion_auto_download_v1');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        enabled: Boolean(parsed.enabled),
+        format: parsed.format || 'wav',
+        bitrate: parsed.bitrate || '192k',
+      };
+    }
+  } catch {
+    // fallback
+  }
+  return DEFAULT_AUTO_DOWNLOAD_CONFIG;
+}
+
+export function saveAutoDownloadConfig(config: AutoDownloadConfig): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem('voxemotion_auto_download_v1', JSON.stringify(config));
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Triggers an immediate browser file download for a synthesized voice track.
+ * Supports zero-latency client-side WAV blob conversion or backend transcoding (MP3, AAC, FLAC, OGG).
+ */
+export async function triggerAudioDownload(
+  track: {
+    audioBase64: string;
+    mimeType?: string;
+    voice?: string;
+    language?: string;
+    timestamp?: number;
+  },
+  format: ExportFormat = 'wav',
+  bitrate: '128k' | '192k' | '256k' | '320k' = '192k'
+): Promise<string> {
+  if (!track.audioBase64) {
+    throw new Error('No audio data available for download.');
+  }
+
+  const sanitizedTitle = (track.voice || 'vox')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-');
+  const sanitizedLang = (track.language || 'audio')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-');
+  const baseFilename = `voxemotion-${sanitizedTitle}-${sanitizedLang}-${track.timestamp || Date.now()}`;
+
+  // Instant 0ms Client-Side WAV Blob Download
+  if (format === 'wav') {
+    const byteCharacters = atob(track.audioBase64);
+    const byteNumbers = new Uint8Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const blob = new Blob([byteNumbers], { type: 'audio/wav' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${baseFilename}.wav`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    return `${baseFilename}.wav`;
+  }
+
+  // Transcoding via backend ffmpeg
+  const res = await fetch('/api/tts/convert', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      audioBase64: track.audioBase64,
+      format,
+      bitrate,
+      filename: baseFilename,
+    }),
+  });
+
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    throw new Error(data.error || `Failed to convert audio to ${format.toUpperCase()}`);
+  }
+
+  const byteCharacters = atob(data.audioBase64);
+  const byteNumbers = new Uint8Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const blob = new Blob([byteNumbers], {
+    type: data.mimeType || `audio/${format}`,
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const targetFilename = data.filename || `${baseFilename}.${format}`;
+  a.download = targetFilename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+  return targetFilename;
+}
