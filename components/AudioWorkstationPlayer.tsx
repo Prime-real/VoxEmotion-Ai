@@ -146,8 +146,8 @@ export default function AudioWorkstationPlayer({
     setTimeout(() => setExportNotice(null), 2500);
   };
 
-  // Prompt Box State
-  const [showPromptBox, setShowPromptBox] = useState(true);
+  // Prompt Box State (default closed to keep player compact & clean)
+  const [showPromptBox, setShowPromptBox] = useState(false);
   const [prevTrackTimestamp, setPrevTrackTimestamp] = useState<number | undefined>(
     track?.timestamp
   );
@@ -808,6 +808,21 @@ export default function AudioWorkstationPlayer({
             </span>
           </button>
 
+          {/* Quick Script Drawer Toggle */}
+          <button
+            onClick={() => setShowPromptBox(!showPromptBox)}
+            title="Open/Close quick script generator box in workstation player"
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-all cursor-pointer ${
+              showPromptBox
+                ? 'border-indigo-500/50 bg-indigo-950/60 text-indigo-300 ring-1 ring-indigo-500/40'
+                : 'border-slate-800 bg-slate-800/60 text-slate-400 hover:bg-slate-700/80 hover:text-slate-200'
+            }`}
+          >
+            <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Quick Script:</span>
+            <span>{showPromptBox ? 'Open' : 'Minimized'}</span>
+          </button>
+
           {/* Voiceover Download Multi-Format Dropdown Button */}
           <div className="relative">
             <div className="flex items-center rounded-lg shadow-md shadow-indigo-600/30 overflow-hidden">
@@ -1166,7 +1181,8 @@ export default function AudioWorkstationPlayer({
       </div>
 
       {/* PROMPT BOX: ENTER & EDIT SCRIPT DIRECTLY */}
-      <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-all">
+      {showPromptBox && (
+        <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/70 p-4 transition-all animate-in fade-in duration-200">
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-cyan-400" />
@@ -1337,6 +1353,7 @@ export default function AudioWorkstationPlayer({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }
