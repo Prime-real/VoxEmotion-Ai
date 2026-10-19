@@ -10,7 +10,7 @@ const execAsync = promisify(exec);
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { videoBase64, videoUrl, audioBase64 } = body;
+    const { videoBase64, videoUrl, audioBase64, cachedVideoId } = body;
 
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
@@ -26,8 +26,25 @@ export async function POST(req: NextRequest) {
     const tempVideoPath = path.join(tmpDir, `${uniqueId}_input.mp4`);
     const tempAudioPath = path.join(tmpDir, `${uniqueId}_audio.wav`);
 
+    // Case 0: Cached video ID from link resolution
+    if (cachedVideoId) {
+      const candidates = fs.readdirSync(tmpDir).filter((f) => f.startsWith(`${cachedVideoId}_`) || f.startsWith(cachedVideoId));
+      if (candidates.length > 0) {
+        const cachedPath = path.join(tmpDir, candidates[0]);
+        try {
+          await execAsync(`ffmpeg -y -i "${cachedPath}" -vn -ac 1 -ar 16000 -c:a pcm_s16le "${tempAudioPath}"`);
+          if (fs.existsSync(tempAudioPath)) {
+            const wavBuffer = fs.readFileSync(tempAudioPath);
+            audioData = wavBuffer.toString('base64');
+            try { fs.unlinkSync(tempAudioPath); } catch {}
+          }
+        } catch (extractErr) {
+          console.warn('Extract from cached video warning:', extractErr);
+        }
+      }
+    }
     // Case 1: Audio is directly provided
-    if (audioBase64) {
+    else if (audioBase64) {
       const cleanB64 = audioBase64.replace(/^data:[^;]+;base64,/, '');
       audioData = cleanB64;
     }

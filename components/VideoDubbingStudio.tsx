@@ -114,6 +114,8 @@ export default function VideoDubbingStudio({
   // Video Source State
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string>(SAMPLE_PRESETS[0].url);
   const [videoBase64, setVideoBase64] = useState<string | null>(null);
+  const [cachedVideoId, setCachedVideoId] = useState<string | null>(null);
+  const uploadedVideoFileRef = useRef<File | null>(null);
   const [videoName, setVideoName] = useState<string>(SAMPLE_PRESETS[0].title);
   const [isVideoLoading, setIsVideoLoading] = useState(false);
 
@@ -218,7 +220,13 @@ export default function VideoDubbingStudio({
         throw new Error(data.error || 'Failed to resolve video stream from URL.');
       }
 
-      if (data.videoBase64) {
+      if (data.cachedVideoId) {
+        setCachedVideoId(data.cachedVideoId);
+      }
+      if (data.streamUrl) {
+        setSelectedVideoUrl(data.streamUrl);
+        setVideoBase64(data.videoBase64 || null);
+      } else if (data.videoBase64) {
         const byteCharacters = atob(data.videoBase64);
         const byteNumbers = new Array(byteCharacters.length);
         for (let i = 0; i < byteCharacters.length; i++) {
@@ -230,16 +238,18 @@ export default function VideoDubbingStudio({
 
         setSelectedVideoUrl(blobUrl);
         setVideoBase64(data.videoBase64);
-        setVideoName(data.title || `${data.platform?.toUpperCase()} Video Clip`);
-        setDubAudioBase64(null);
-        setDubAudioBlobUrl(null);
-        setMergedVideoBlobUrl(null);
-        setDetectedLanguage(null);
-        setSegments([]);
-
-        setStatusNotice(`✓ Successfully imported video from ${data.platform?.toUpperCase()}!`);
-        setTimeout(() => setStatusNotice(null), 5000);
       }
+
+      uploadedVideoFileRef.current = null;
+      setVideoName(data.title || `${data.platform?.toUpperCase()} Video Clip`);
+      setDubAudioBase64(null);
+      setDubAudioBlobUrl(null);
+      setMergedVideoBlobUrl(null);
+      setDetectedLanguage(null);
+      setSegments([]);
+
+      setStatusNotice(`✓ Successfully imported video from ${data.platform?.toUpperCase()}!`);
+      setTimeout(() => setStatusNotice(null), 5000);
     } catch (err: any) {
       console.error(err);
       setErrorMessage(err.message || 'Error processing video link.');
@@ -266,32 +276,40 @@ export default function VideoDubbingStudio({
     setErrorMessage(null);
     setIsVideoLoading(true);
     setVideoName(file.name);
+    setCachedVideoId(null);
+    uploadedVideoFileRef.current = file;
+    setSelectedVideoUrl(URL.createObjectURL(file));
     setDubAudioBase64(null);
     setDubAudioBlobUrl(null);
     setMergedVideoBlobUrl(null);
     setDetectedLanguage(null);
     setSegments([]);
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const b64 = reader.result as string;
-      setVideoBase64(b64);
-      setSelectedVideoUrl(URL.createObjectURL(file));
+    if (file.size <= 8 * 1024 * 1024) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setVideoBase64(reader.result as string);
+        setIsVideoLoading(false);
+      };
+      reader.onerror = () => {
+        setIsVideoLoading(false);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setVideoBase64(null);
       setIsVideoLoading(false);
-      setStatusNotice(`Uploaded video: ${file.name}`);
-      setTimeout(() => setStatusNotice(null), 3000);
-    };
-    reader.onerror = () => {
-      setIsVideoLoading(false);
-      setErrorMessage('Failed to read video file.');
-    };
-    reader.readAsDataURL(file);
+    }
+
+    setStatusNotice(`Uploaded video: ${file.name}`);
+    setTimeout(() => setStatusNotice(null), 3000);
   };
 
   // Select Sample Preset
   const handleSelectSample = (preset: SampleVideoPreset) => {
     setSelectedVideoUrl(preset.url);
     setVideoBase64(null);
+    setCachedVideoId(null);
+    uploadedVideoFileRef.current = null;
     setVideoName(preset.title);
     setDubAudioBase64(null);
     setDubAudioBlobUrl(null);
@@ -376,8 +394,9 @@ export default function VideoDubbingStudio({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          videoUrl: videoBase64 ? undefined : selectedVideoUrl,
-          videoBase64: videoBase64 || undefined,
+          cachedVideoId: cachedVideoId || undefined,
+          videoUrl: (!cachedVideoId && !videoBase64) ? selectedVideoUrl : undefined,
+          videoBase64: (!cachedVideoId && videoBase64) ? videoBase64 : undefined,
         }),
       });
 
@@ -524,50 +543,132 @@ export default function VideoDubbingStudio({
     setIsMergingVideo(true);
     setErrorMessage(null);
 
+    const safeFilename = `dubbed_${targetLanguage.code}_${(videoName || 'video').replace(/[^a-zA-Z0-9_\-\.]/g, '_')}.mp4`;
+
     try {
-      const res = await fetch('/api/video/merge-dub', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoUrl: videoBase64 ? undefined : selectedVideoUrl,
-          videoBase64: videoBase64 || undefined,
-          dubAudioBase64,
-          originalVolume: originalAudioVolume,
-          dubVolume: dubbedAudioVolume,
-          filename: `dubbed_${targetLanguage.code}_${videoName.replace(/\.[^/.]+$/, '')}.mp4`,
-        }),
-      });
+      let res: Response;
 
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'Failed to merge video with dubbed audio.');
+      // If user uploaded a local file, stream with FormData to avoid JSON base64 memory limit
+      if (uploadedVideoFileRef.current) {
+        const formData = new FormData();
+        formData.append('video', uploadedVideoFileRef.current);
+        formData.append('dubAudioBase64', dubAudioBase64);
+        formData.append('originalVolume', originalAudioVolume.toString());
+        formData.append('dubVolume', dubbedAudioVolume.toString());
+        formData.append('filename', safeFilename);
+
+        res = await fetch('/api/video/merge-dub', {
+          method: 'POST',
+          headers: {
+            Accept: 'video/mp4, application/json',
+          },
+          body: formData,
+        });
+      } else {
+        // Cached link video or sample preset
+        res = await fetch('/api/video/merge-dub', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'video/mp4, application/json',
+          },
+          body: JSON.stringify({
+            cachedVideoId: cachedVideoId || undefined,
+            videoUrl: !cachedVideoId && !videoBase64 ? selectedVideoUrl : undefined,
+            videoBase64: !cachedVideoId && videoBase64 ? videoBase64 : undefined,
+            dubAudioBase64,
+            originalVolume: originalAudioVolume,
+            dubVolume: dubbedAudioVolume,
+            filename: safeFilename,
+            format: 'binary',
+          }),
+        });
       }
 
-      const byteCharacters = atob(data.videoBase64);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      if (!res.ok) {
+        let errText = 'Failed to merge video with dubbed audio.';
+        try {
+          const errJson = await res.json();
+          if (errJson.error) errText = errJson.error;
+        } catch {}
+        throw new Error(errText);
       }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: 'video/mp4' });
+
+      const contentType = res.headers.get('content-type') || '';
+      let blob: Blob;
+      let finalFilename = safeFilename;
+
+      if (contentType.includes('video/mp4') || contentType.includes('application/octet-stream')) {
+        blob = await res.blob();
+        const headerName = res.headers.get('X-Merged-Filename');
+        if (headerName) finalFilename = headerName;
+      } else {
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        if (data.videoBase64) {
+          const byteCharacters = atob(data.videoBase64);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          blob = new Blob([new Uint8Array(byteNumbers)], { type: 'video/mp4' });
+        } else {
+          throw new Error('No video binary received from merger.');
+        }
+        if (data.filename) finalFilename = data.filename;
+      }
+
       const blobUrl = URL.createObjectURL(blob);
       setMergedVideoBlobUrl(blobUrl);
 
-      // Automatically trigger browser download of the finished MP4!
+      // Trigger browser download
       const a = document.createElement('a');
       a.href = blobUrl;
-      a.download = data.filename || 'dubbed_video.mp4';
+      a.download = finalFilename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
 
-      setStatusNotice(`✓ Merged & downloaded dubbed video: ${data.filename}!`);
+      setStatusNotice(`✓ Merged & downloaded dubbed video: ${finalFilename}!`);
       setTimeout(() => setStatusNotice(null), 5000);
     } catch (err: any) {
-      console.error(err);
-      setErrorMessage(err.message || 'Error merging dubbed video.');
+      console.error('Merge dub error:', err);
+      const isFetchErr = err.name === 'TypeError' || err.message?.toLowerCase().includes('fetch');
+      if (isFetchErr) {
+        setErrorMessage(
+          'Video muxing connection timed out. You can download the synthesized dubbed MP3/WAV voiceover and Subtitles directly below!'
+        );
+      } else {
+        setErrorMessage(err.message || 'Error merging dubbed video.');
+      }
     } finally {
       setIsMergingVideo(false);
+    }
+  };
+
+  // Direct WAV Voiceover Download
+  const handleDownloadDubWav = () => {
+    if (!dubAudioBase64) return;
+    try {
+      const clean = dubAudioBase64.replace(/^data:[^;]+;base64,/, '');
+      const byteCharacters = atob(clean);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'audio/wav' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dubbed_voiceover_${targetLanguage.code}_${selectedVoice.id.toLowerCase()}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      setStatusNotice('✓ Downloaded high-fidelity WAV voiceover!');
+      setTimeout(() => setStatusNotice(null), 3000);
+    } catch (err: any) {
+      console.error('WAV download failed:', err);
     }
   };
 
@@ -1335,23 +1436,35 @@ export default function VideoDubbingStudio({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="grid grid-cols-3 gap-2 text-xs">
                   {/* Instant MP3 Download */}
                   <button
                     onClick={handleDownloadDubMp3}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white hover:bg-emerald-500 shadow-md shadow-emerald-600/20 cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-2 font-semibold text-white hover:bg-emerald-500 shadow-md shadow-emerald-600/20 cursor-pointer"
+                    title="Download lightweight compressed MP3 voiceover"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    <span>Download MP3</span>
+                    <span>Dub MP3</span>
+                  </button>
+
+                  {/* WAV Download */}
+                  <button
+                    onClick={handleDownloadDubWav}
+                    className="flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-2 font-semibold text-slate-200 hover:bg-slate-700 border border-slate-700/60 cursor-pointer"
+                    title="Download studio master lossless WAV audio"
+                  >
+                    <Volume2 className="h-3.5 w-3.5 text-emerald-400" />
+                    <span>Dub WAV</span>
                   </button>
 
                   {/* Subtitle SRT Download */}
                   <button
                     onClick={handleDownloadSRT}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2 font-semibold text-slate-200 hover:bg-slate-700 border border-slate-700/60 cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-2 font-semibold text-slate-200 hover:bg-slate-700 border border-slate-700/60 cursor-pointer"
+                    title="Download synchronized bilingual subtitle file (.srt)"
                   >
                     <FileText className="h-3.5 w-3.5 text-cyan-400" />
-                    <span>Download SRT</span>
+                    <span>SRT Subs</span>
                   </button>
                 </div>
 

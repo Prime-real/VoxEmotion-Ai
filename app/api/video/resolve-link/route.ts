@@ -4,6 +4,9 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 const execAsync = promisify(exec);
 
 type VideoPlatform = 'youtube' | 'instagram' | 'tiktok' | 'pinterest' | 'vimeo' | 'direct' | 'unknown';
@@ -32,7 +35,7 @@ export async function POST(req: NextRequest) {
 
     const cleanUrl = url.trim();
     const platform = detectPlatform(cleanUrl);
-    const id = `link_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const id = `link_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const tmpDir = '/tmp';
     const tempOutTemplate = path.join(tmpDir, `${id}_media.%(ext)s`);
 
@@ -60,10 +63,16 @@ export async function POST(req: NextRequest) {
           );
         }
 
-        const b64 = buffer.toString('base64');
+        const targetFile = path.join(tmpDir, `${id}_media.mp4`);
+        fs.writeFileSync(targetFile, buffer);
+
+        const b64 = buffer.length <= 5 * 1024 * 1024 ? buffer.toString('base64') : null;
+
         return NextResponse.json({
           success: true,
           platform,
+          cachedVideoId: id,
+          streamUrl: `/api/video/stream?id=${id}`,
           title: cleanUrl.split('/').pop()?.split('?')[0] || 'Direct Video Clip',
           videoBase64: b64,
           mimeType: response.headers.get('content-type') || 'video/mp4',
@@ -85,18 +94,13 @@ export async function POST(req: NextRequest) {
       if (files.length > 0) {
         const filePath = path.join(tmpDir, files[0]);
         const fileBuffer = fs.readFileSync(filePath);
-        const b64 = fileBuffer.toString('base64');
-
-        // Cleanup temp file
-        try {
-          fs.unlinkSync(filePath);
-        } catch {
-          // ignore
-        }
+        const b64 = fileBuffer.length <= 5 * 1024 * 1024 ? fileBuffer.toString('base64') : null;
 
         return NextResponse.json({
           success: true,
           platform,
+          cachedVideoId: id,
+          streamUrl: `/api/video/stream?id=${id}`,
           title: `${platform.toUpperCase()} Video Clip`,
           videoBase64: b64,
           mimeType: 'video/mp4',

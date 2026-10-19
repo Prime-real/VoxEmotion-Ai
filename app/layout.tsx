@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-indigo-500/30 selection:text-indigo-200"
+        className="min-h-screen bg-[#08090d] text-slate-100 antialiased selection:bg-indigo-500/30 selection:text-indigo-200"
         suppressHydrationWarning
       >
         {children}

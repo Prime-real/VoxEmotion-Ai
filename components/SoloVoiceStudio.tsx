@@ -32,6 +32,7 @@ import {
   Check,
   Play,
   Pause,
+  Square,
 } from 'lucide-react';
 
 import VoiceSelectorCards from './VoiceSelectorCards';
@@ -83,6 +84,8 @@ export default function SoloVoiceStudio({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [lastGeneratedTrack, setLastGeneratedTrack] = useState<AudioTrackMetadata | null>(null);
   const [isDownloadingVoiceover, setIsDownloadingVoiceover] = useState(false);
+  const [isPlayingGenerated, setIsPlayingGenerated] = useState(false);
+  const generatedAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Simplified vs Open Settings State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -289,6 +292,27 @@ export default function SoloVoiceStudio({
     } finally {
       setIsDownloadingVoiceover(false);
     }
+  };
+
+  // Instant Play/Pause for generated voiceover
+  const handleTogglePlayGenerated = () => {
+    if (!lastGeneratedTrack?.audioBase64) return;
+    if (isPlayingGenerated && generatedAudioRef.current) {
+      generatedAudioRef.current.pause();
+      setIsPlayingGenerated(false);
+      return;
+    }
+
+    if (generatedAudioRef.current) {
+      generatedAudioRef.current.pause();
+    }
+
+    const audio = new Audio(`data:${lastGeneratedTrack.mimeType || 'audio/wav'};base64,${lastGeneratedTrack.audioBase64}`);
+    audio.onended = () => setIsPlayingGenerated(false);
+    audio.onerror = () => setIsPlayingGenerated(false);
+    generatedAudioRef.current = audio;
+    audio.play();
+    setIsPlayingGenerated(true);
   };
 
   // Quick Audition for currently selected voice
@@ -758,6 +782,28 @@ export default function SoloVoiceStudio({
           )}
 
           <div className="flex items-center gap-3">
+            {/* Play/Pause Generated Voiceover */}
+            {lastGeneratedTrack && (
+              <button
+                type="button"
+                onClick={handleTogglePlayGenerated}
+                className="flex items-center gap-2 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 px-3.5 py-3 font-semibold text-indigo-200 transition-all cursor-pointer text-xs shadow-md"
+                title={isPlayingGenerated ? 'Pause preview' : 'Listen to generated voiceover'}
+              >
+                {isPlayingGenerated ? (
+                  <>
+                    <Square className="h-4 w-4 fill-indigo-300 text-indigo-300" />
+                    <span>Pause</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="h-4 w-4 fill-indigo-300 text-indigo-300" />
+                    <span>Listen</span>
+                  </>
+                )}
+              </button>
+            )}
+
             {/* Download Voiceover Button */}
             {lastGeneratedTrack && (
               <div className="flex items-center rounded-xl overflow-hidden shadow-lg border border-emerald-500/40">
